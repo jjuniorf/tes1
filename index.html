@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Match Portal</title>
+    <style>
+        :root {
+            --bg-color: #050505; --card-bg: #14171c; --text-main: #ffffff;
+            --accent-green: #84cc16; --live-red: #ef4444; --badge-bg: rgba(0, 0, 0, 0.6);
+            --live-bg: rgba(34, 197, 94, 0.15); --banner-bg: rgba(153, 27, 27, 0.1);
+            --banner-border: rgba(153, 27, 27, 0.5);
+        }
+        body { background-color: var(--bg-color); color: var(--text-main); font-family: sans-serif; margin: 0; padding: 2rem; min-height: 100vh; }
+        .app-container { width: 100%; max-width: 1200px; margin: 0 auto; }
+        .hidden { display: none !important; }
+        
+        /* Admin Toggle */
+        .admin-controls { position: fixed; top: 10px; right: 20px; z-index: 100; display: flex; gap: 10px; }
+        .admin-btn { background: #333; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+        .reset-btn { background: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+        .hide-btn { background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; }
+        .dimmed { opacity: 0.4; border: 1px dashed #555; }
+        
+        /* Tabs */
+        .tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 2rem; flex-wrap: wrap; }
+        .tab-btn { background: #1a1e24; border: 1px solid #333; color: #fff; padding: 8px 20px; border-radius: 20px; cursor: pointer; transition: 0.2s; }
+        .tab-btn.active { background: var(--accent-green); color: #000; font-weight: bold; }
+        
+        /* Gallery */
+        h1 { text-align: center; margin-bottom: 2rem; }
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+        .video-card { background-color: var(--card-bg); border-radius: 12px; overflow: hidden; cursor: pointer; transition: 0.2s; position: relative; }
+        .video-card:hover { transform: translateY(-4px); background-color: #1a1e24; }
+        .image-wrapper { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
+        .cover-image { width: 100%; height: 100%; object-fit: cover; }
+        .badge-left { position: absolute; top: 10px; left: 10px; background: var(--badge-bg); padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 6px; }
+        .card-content { padding: 16px; }
+        .card-title { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; margin-bottom: 20px; }
+        .card-footer { color: var(--accent-green); font-size: 0.8rem; font-weight: 700; }
+
+        /* Player Styles */
+        .player-view { display: flex; flex-direction: column; gap: 15px; }
+        .back-btn { cursor: pointer; color: var(--accent-green); margin-bottom: 1rem; font-weight: bold; }
+        .viendo-badge { display: inline-flex; align-items: center; gap: 8px; background-color: var(--live-bg); border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; width: fit-content; }
+        
+        .live-dot { width: 8px; height: 8px; background-color: var(--accent-green); border-radius: 50%; box-shadow: 0 0 8px var(--accent-green); animation: pulse 2s infinite; }
+        .live-dot-red { width: 8px; height: 8px; background-color: var(--live-red); border-radius: 50%; box-shadow: 0 0 8px var(--live-red); animation: pulse 2s infinite; }
+        .live-text { display: flex; align-items: center; gap: 6px; color: var(--live-red); }
+        .ended-text { color: #9ca3af; font-weight: bold; } /* Gray color for ended matches */
+        
+        .alert-banner { background-color: var(--banner-bg); border: 1px solid var(--banner-border); border-radius: 8px; padding: 8px 16px; font-size: 0.8rem; color: #fca5a5; }
+        .video-wrapper { position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 12px; overflow: hidden; }
+        .video-wrapper iframe, .video-wrapper video { position: absolute; width: 100%; height: 100%; border: none; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="admin-controls">
+        <button id="resetBtn" class="reset-btn hidden" onclick="resetHidden()">Reset Hidden</button>
+        <button class="admin-btn" onclick="toggleAdminMode()">Toggle Admin Mode</button>
+    </div>
+
+    <div class="app-container">
+        <!-- Gallery View -->
+        <div id="galleryView">
+            <h1>Upcoming Matches</h1>
+            <div id="tabsContainer" class="tabs"></div>
+            <div class="gallery-grid" id="gridContainer"></div>
+        </div>
+
+        <!-- Player View -->
+        <div id="playerView" class="hidden">
+            <div class="back-btn" onclick="closePlayer()">← Back to Schedule</div>
+            <div class="viendo-badge"><div class="live-dot"></div>VIENDO: <span id="matchTitle"></span></div>
+            <div class="alert-banner" id="alertBanner">Stream may experience interruptions. Please refresh if the video freezes.</div>
+            <div class="video-wrapper" id="videoContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================================
+        // EDIT YOUR CATEGORIES AND MATCHES HERE
+        // IF USING IFRAME CODE, WRAP IT IN SINGLE QUOTES: '...'
+        // ========================================================
+        const matchesByCategory = {
+            "LigaMX": [
+                { title: "puebla vs chivas", date: "2026-07-31T18:00:00", img: "https://static.wincomparator.com/wincomparator-event-thumbnails/prod/8535920.webp", video:"vid" },
+                { title: "juarez vs pumas", date: "2026-07-31T20:00:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.f18fc8a3-6528-4cf2-8f1a-a9c1c902db8a/19/BOXART-16X9/en-US/1920x1080._UR1920,1080_.png", video: "vid" },
+                { title: "san luis vs tijuana", date: "2026-08-01T20:00:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.07319fd8-292e-4972-849f-2351b030c2ad/2/HERO-16X9/en-US/3840x2160._UR1920,1080_.png", video: "vid" },
+                { title: "queretaro vs tigres", date: "2026-08-01T16:00:00", img: "https://artwork.espncdn.com/programs/da42e054-4e7c-4833-b87e-c130cebe9e1e/16x9/1280x720_201809061843.jpg", video: "vid" },
+                { title: "atlas vs monterrey", date: "2026-08-01T18:00:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.15c5d93c-b004-474c-bd3c-6ce1b8fc93d5/2/BOXART-16X9/en-US/1920x1080._UR1920,1080_.png", video:"vid" },
+                { title: "leon vs pachuca", date: "2026-08-01T18:00:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.89fa1b8d-1354-4c24-be4d-98b12416f967/3/HERO-16X9/en-US/3840x2160._UR1920,1080_.png", video: "vid" },
+                { title: "cruz azul vs atlante", date: "2026-08-01T20:00:00", img: "https://static.wincomparator.com/wincomparator-event-thumbnails/prod/8535835.webp", video: "vid" },
+                { title: "america vs santos", date: "2026-08-02T16:00:00", img: "https://artwork.espncdn.com/programs/6401f6aa-fac6-4035-8218-ea1d176eec04/16x9/large_201904231955.jpg", video: "vid" },
+                { title: "toluca vs necaxa", date: "2026-08-02T18:00:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.ebdad641-3208-4d75-9065-c58ffd709aae/2/HERO-16X9/en-US/3840x2160._UR1920,1080_SX1080_FMpng_.png", video: "vid" },
+
+            
+            ],
+"MLB": [
+                { title: "orioles vs tigers", date: "2026-07-28T15:40:00", img: "https://s.secure.espncdn.com/stitcher/artwork/16x9.jpg?height=720&width=1280&cb=12&templateId=espn.core.dtc.large.16x9.1&source=https://artwork.espncdn.com/events/401354720/16x9/1280x720_20220427221004.jpg&showBadge=true&package=ESPN_PLUS_MLB", video: 'https://d5.vtoc.live/vdc10012165/EATkJOaFNbb48fUQ4LEEpw/2c380c92cbb6515d1070c97cf2/1785284616/chunklist.m3u8' },
+                { title: "mariners vs dodgers", date: "2026-07-28T19:10:00", img: "https://m.media-amazon.com/images/S/le-target-images-prod/amzn1.dv.gti.a532c6f5-52d4-44a6-baa0-bcc5f3e13704/4/BOXART-4X3/en-US/2560x1920.png", video: 'https://streamfree.top/embed/baseball/new-york-yankees-vs-philadelphia-phillies' },
+              
+            ],
+"SOCCER": [
+                { title: "soccer2", date: "2026-07-25T20:00:00", img: "img", video: 'vid' },
+                { title: "soccer1", date: "2026-07-24T17:05:00", img: "img", video: 'vid' },
+              
+            ],
+        };
+
+        // ========================================================
+        // ENGINE LOGIC (DO NOT EDIT BELOW THIS LINE)
+        // ========================================================
+        
+        const matchData = [];
+        for (const category in matchesByCategory) {
+            matchesByCategory[category].forEach(match => {
+                matchData.push({ ...match, category: category });
+            });
+        }
+
+        let activeMatch = null;
+        let isAdminMode = false;
+        let currentCategory = "All";
+
+        function getEmbedHtml(url) {
+            const trimmedUrl = url.trim();
+            if (trimmedUrl.startsWith('<iframe') || trimmedUrl.startsWith('<script')) {
+                return trimmedUrl;
+            }
+            if (trimmedUrl.includes('youtube.com/watch?v=')) {
+                const id = trimmedUrl.split('v=')[1].split('&')[0];
+                return `<iframe src="https://www.youtube.com/embed/${id}?autoplay=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" frameborder="0"></iframe>`;
+            }
+            if (trimmedUrl.endsWith('.mp4')) {
+                return `<video controls autoplay style="width:100%; height:100%;"><source src="${trimmedUrl}" type="video/mp4"></video>`;
+            }
+            return `<iframe src="${trimmedUrl}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen width="100%" height="100%" frameborder="0" scrolling="no"></iframe>`;
+        }
+
+        function toggleAdminMode() {
+            isAdminMode = !isAdminMode;
+            if(isAdminMode) {
+                document.getElementById('resetBtn').classList.remove('hidden');
+            } else {
+                document.getElementById('resetBtn').classList.add('hidden');
+            }
+            renderGallery();
+        }
+
+        function resetHidden() {
+            localStorage.setItem('hiddenTitles', JSON.stringify([]));
+            renderGallery();
+        }
+
+        function changeCategory(cat) {
+            currentCategory = cat;
+            renderGallery();
+        }
+
+        function toggleMatchVisibility(title, event) {
+            if(event) event.stopPropagation();
+            let hiddenTitles = JSON.parse(localStorage.getItem('hiddenTitles') || '[]');
+            if (hiddenTitles.includes(title)) {
+                hiddenTitles = hiddenTitles.filter(t => t !== title);
+            } else {
+                hiddenTitles.push(title);
+            }
+            localStorage.setItem('hiddenTitles', JSON.stringify(hiddenTitles));
+            renderGallery();
+        }
+
+        function renderGallery() {
+            const hiddenTitles = JSON.parse(localStorage.getItem('hiddenTitles') || '[]');
+            const gridContainer = document.getElementById('gridContainer');
+            const tabsContainer = document.getElementById('tabsContainer');
+
+            const categories = ["All", ...Object.keys(matchesByCategory)];
+            tabsContainer.innerHTML = categories.map(cat => 
+                `<button class="tab-btn ${currentCategory === cat ? 'active' : ''}" onclick="changeCategory('${cat}')">${cat}</button>`
+            ).join('');
+            
+            gridContainer.innerHTML = matchData.map((m) => {
+                const isHidden = hiddenTitles.includes(m.title);
+                if (currentCategory !== "All" && m.category !== currentCategory) return '';
+                if (!isAdminMode && isHidden) return '';
+
+                let badgeHtml = '';
+                let footerHtml = '';
+
+                if (m.date) {
+                    const d = new Date(m.date);
+                    let hours = d.getHours();
+                    const minutes = d.getMinutes().toString().padStart(2, '0');
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12;
+                    const timeString = `${hours}:${minutes} ${ampm}`;
+                    badgeHtml = `🕒 ${timeString}`;
+                    footerHtml = `<div class="card-footer" data-countdown="${m.date}">Loading...</div>`;
+                } else {
+                    badgeHtml = `<div class="live-dot-red"></div> <span style="color: var(--live-red); font-weight: bold;">24/7</span>`;
+                    footerHtml = `<div class="card-footer"><div class="live-text"><div class="live-dot-red"></div> 24/7 LIVE</div></div>`;
+                }
+
+                const encodedVideoCode = btoa(unescape(encodeURIComponent(m.video)));
+
+                return `
+                <div class="video-card ${isHidden ? 'dimmed' : ''}" onclick="${isAdminMode ? '' : `openPlayer('${encodedVideoCode}', '${m.title}', '${m.date || ''}')`}">
+                    ${isAdminMode ? `<button class="hide-btn" data-title="${m.title}" onclick="toggleMatchVisibility(this.getAttribute('data-title'), event)">${isHidden ? 'Show' : 'Hide'}</button>` : ''}
+                    <div class="image-wrapper"><img class="cover-image" src="${m.img}"><div class="badge-left">${badgeHtml}</div></div>
+                    <div class="card-content">
+                        <div class="card-title">${m.title}</div>
+                        ${footerHtml}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function openPlayer(encodedUrl, title, matchDate, fromHistory = false) {
+            const url = decodeURIComponent(escape(atob(encodedUrl)));
+            
+            activeMatch = { url, title, matchDate };
+            document.getElementById('galleryView').classList.add('hidden');
+            document.getElementById('playerView').classList.remove('hidden');
+            document.getElementById('matchTitle').innerText = title;
+            checkActiveMatchVideo();
+            if (!fromHistory) history.pushState({ view: 'player', url: encodedUrl, title: title, date: matchDate }, "", "#player");
+        }
+
+        function closePlayer(fromHistory = false) {
+            activeMatch = null;
+            if (!fromHistory) { history.back(); return; }
+            document.getElementById('galleryView').classList.remove('hidden');
+            document.getElementById('playerView').classList.add('hidden');
+            document.getElementById('videoContainer').innerHTML = '';
+        }
+
+        function checkActiveMatchVideo() {
+            if (!activeMatch) return;
+            const container = document.getElementById('videoContainer');
+            const banner = document.getElementById('alertBanner');
+            
+            if (!activeMatch.matchDate || activeMatch.matchDate === "") {
+                banner.innerHTML = `Stream may experience interruptions. Please refresh if the video freezes.`;
+                if (container.innerHTML === '') container.innerHTML = getEmbedHtml(activeMatch.url);
+                return;
+            }
+
+            const diff = new Date(activeMatch.matchDate).getTime() - new Date().getTime();
+            const fifteenMinutesInMs = 15 * 60 * 1000;
+
+            if (diff > fifteenMinutesInMs) {
+                banner.innerHTML = `Stream may experience interruptions. Please refresh if the video freezes. <strong style="color: #fca5a5; font-weight: bold;">(Live streams will be available approximately 15 minutes before the broadcast's start.)</strong>`;
+                if (container.innerHTML !== '') container.innerHTML = '';
+            } else {
+                banner.innerHTML = `Stream may experience interruptions. Please refresh if the video freezes.`;
+                if (container.innerHTML === '') container.innerHTML = getEmbedHtml(activeMatch.url);
+            }
+        }
+
+        function updateCountdowns() {
+            document.querySelectorAll('[data-countdown]').forEach(el => {
+                const matchDateStr = el.getAttribute('data-countdown');
+                const diff = new Date(matchDateStr).getTime() - new Date().getTime();
+                
+                // 5 hours in milliseconds
+                const fiveHoursInMs = 5 * 60 * 60 * 1000;
+
+                // If the start time was more than 5 hours ago
+                if (diff < -fiveHoursInMs) {
+                    el.innerHTML = `<div class="ended-text">ENDED</div>`; 
+                    return; 
+                } 
+                // If it has started, but hasn't been 5 hours yet
+                else if (diff < 0) { 
+                    el.innerHTML = `<div class="live-text"><div class="live-dot-red"></div> LIVE</div>`; 
+                    return; 
+                }
+
+                // If it hasn't started yet, show the countdown
+                const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)).toString().padStart(2, '0');
+                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0');
+                el.innerText = `⏱ ${d}d ${h}h ${m}m`;
+            });
+            checkActiveMatchVideo();
+        }
+
+        renderGallery();
+        setInterval(updateCountdowns, 1000);
+        updateCountdowns();
+
+        history.replaceState({ view: 'gallery' }, "", window.location.pathname);
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.view === 'player') {
+                openPlayer(e.state.url, e.state.title, e.state.date, true);
+            } else {
+                closePlayer(true);
+            }
+        });
+    </script>
+</body>
+</html>
